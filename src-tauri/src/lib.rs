@@ -1,5 +1,5 @@
 use std::fs;
-use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder, Window, WindowEvent};
+use tauri::{AppHandle, DragDropEvent, Emitter, Manager, WebviewUrl, WebviewWindowBuilder, Window, WindowEvent};
 
 /// Opens or focuses the secondary presenter notes window.
 /// MUST be `async` on Windows (WebView2) so `WebviewWindowBuilder::build()` runs off the
@@ -96,10 +96,20 @@ pub fn run() {
         .on_window_event(|window, event| {
             // When the main presentation window is closed, automatically close the popout notes window
             if window.label() == "main" {
-                if let WindowEvent::Destroyed = event {
-                    if let Some(notes_win) = window.app_handle().get_webview_window("notes_popout") {
-                        let _ = notes_win.close();
+                match event {
+                    WindowEvent::Destroyed => {
+                        if let Some(notes_win) = window.app_handle().get_webview_window("notes_popout") {
+                            let _ = notes_win.close();
+                        }
                     }
+                    WindowEvent::DragDrop(DragDropEvent::Drop { paths, .. }) => {
+                        let path_strings: Vec<String> = paths
+                            .iter()
+                            .map(|p| p.to_string_lossy().to_string())
+                            .collect();
+                        let _ = window.app_handle().emit("native-file-drop", path_strings);
+                    }
+                    _ => {}
                 }
             }
         })

@@ -15,7 +15,8 @@
       {
         "title": "PDF Presenter v1.0.0",
         "width": 800,
-        "height": 600
+        "height": 600,
+        "dragDropEnabled": false
       }
     ],
     "security": {

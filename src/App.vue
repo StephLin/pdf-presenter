@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue';
 import { isTauri } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { getCurrentWebview } from '@tauri-apps/api/webview';
 import NotesWindow from './components/NotesWindow.vue';
 import { usePresentation } from './composables/usePresentation';
 import { useKeyboardNav } from './composables/useKeyboardNav';
@@ -59,7 +61,19 @@ if (!isNotesPopout.value) {
 const isDragOver = ref(false);
 const fileInputRef = ref<HTMLInputElement | null>(null);
 const appVersion = ref(APP_VERSION);
-let unlistenDragDrop: (() => void) | null = null;
+const unlistenFns: Array<() => void> = [];
+
+async function handleDroppedPaths(paths: string[] | undefined) {
+  isDragOver.value = false;
+  if (!paths || paths.length === 0) return;
+
+  const pdfPath = paths.find((p) => p.toLowerCase().endsWith('.pdf'));
+  if (pdfPath) {
+    await presentation.loadPdfFromPath(pdfPath);
+  } else {
+    alert('Please drop a PDF document!');
+  }
+}
 
 onMounted(async () => {
   appVersion.value = await resolveAppVersion();
@@ -70,34 +84,46 @@ onMounted(async () => {
       try {
         const currentWin = getCurrentWindow();
         await currentWin.setTitle(displayTitle);
-        unlistenDragDrop = await currentWin.onDragDropEvent(async (event) => {
+      } catch {
+        // Ignore window title update errors in non-main contexts
+      }
+
+      try {
+        const unlistenWebviewDrop = await getCurrentWebview().onDragDropEvent(async (event) => {
           const payload = event.payload;
           if (payload.type === 'enter' || payload.type === 'over') {
             isDragOver.value = true;
           } else if (payload.type === 'leave') {
             isDragOver.value = false;
           } else if (payload.type === 'drop') {
-            isDragOver.value = false;
-            const paths = payload.paths || [];
-            const pdfPath = paths.find((p) => p.toLowerCase().endsWith('.pdf'));
-            if (pdfPath) {
-              await presentation.loadPdfFromPath(pdfPath);
-            } else if (paths.length > 0) {
-              alert('Please drop a PDF document!');
-            }
+            await handleDroppedPaths(payload.paths);
           }
         });
+        unlistenFns.push(unlistenWebviewDrop);
       } catch {
-        // Ignore window title / drag-drop listener errors in non-main contexts
+        // Ignore webview drag-drop listener errors
+      }
+
+      try {
+        const unlistenBackendDrop = await listen<string[]>('native-file-drop', async (event) => {
+          await handleDroppedPaths(event.payload);
+        });
+        unlistenFns.push(unlistenBackendDrop);
+      } catch {
+        // Ignore backend drop listener errors
       }
     }
   }
 });
 
 onUnmounted(() => {
-  if (unlistenDragDrop) {
-    unlistenDragDrop();
-    unlistenDragDrop = null;
+  while (unlistenFns.length > 0) {
+    const fn = unlistenFns.pop();
+    try {
+      fn?.();
+    } catch {
+      // Ignore unlisten errors
+    }
   }
 });
 
@@ -123,38 +149,60 @@ function handleDragLeave(e: DragEvent) {
   isDragOver.value = false;
 }
 
+async function loadPdfFileObject(file: File) {
+  if (!file.name.toLowerCase().endsWith('.pdf') && file.type !== 'application/pdf') {
+    alert('Please drop a PDF document!');
+    return;
+  }
+
+  try {
+    const buffer = await file.arrayBuffer();
+    await presentation.loadPdfData(file.name || 'document.pdf', buffer, null);
+  } catch {
+    const reader = new FileReader();
+    reader.onload = async () => {
+      if (reader.result instanceof ArrayBuffer) {
+        await presentation.loadPdfData(file.name || 'document.pdf', reader.result, null);
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+}
+
 function handleFileSelect(e: Event) {
   const target = e.target as HTMLInputElement;
   const files = target.files;
   if (!files || files.length === 0) return;
 
-  const file = files[0];
-  const reader = new FileReader();
-  reader.onload = async () => {
-    if (reader.result instanceof ArrayBuffer) {
-      await presentation.loadPdfData(file.name, reader.result, null);
-    }
-  };
-  reader.readAsArrayBuffer(file);
+  void loadPdfFileObject(files[0]);
+  target.value = '';
 }
 
 function handleDrop(e: DragEvent) {
   isDragOver.value = false;
-  if (!e.dataTransfer || !e.dataTransfer.files.length) return;
+  if (!e.dataTransfer) return;
 
-  const file = e.dataTransfer.files[0];
-  if (!file.name.toLowerCase().endsWith('.pdf')) {
-    alert('Please drop a PDF document!');
+  if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+    const files = Array.from(e.dataTransfer.files);
+    const pdfFile = files.find(
+      (f) => f.name.toLowerCase().endsWith('.pdf') || f.type === 'application/pdf'
+    );
+    void loadPdfFileObject(pdfFile || files[0]);
     return;
   }
 
-  const reader = new FileReader();
-  reader.onload = async () => {
-    if (reader.result instanceof ArrayBuffer) {
-      await presentation.loadPdfData(file.name, reader.result, null);
+  if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+    for (let i = 0; i < e.dataTransfer.items.length; i++) {
+      const item = e.dataTransfer.items[i];
+      if (item.kind === 'file') {
+        const file = item.getAsFile();
+        if (file) {
+          void loadPdfFileObject(file);
+          return;
+        }
+      }
     }
-  };
-  reader.readAsArrayBuffer(file);
+  }
 }
 </script>
 
