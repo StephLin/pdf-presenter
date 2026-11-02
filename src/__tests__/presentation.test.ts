@@ -164,6 +164,15 @@ describe('User Preferences & Stroke Width Settings', () => {
     expect(typeof presentation.openNotesPopoutWindow).toBe('function');
   });
 
+  it('provides loadPdfFromPath method for native Tauri drag-and-drop file loading', async () => {
+    const { usePresentation } = await import('../composables/usePresentation');
+    const presentation = usePresentation();
+    expect(typeof presentation.loadPdfFromPath).toBe('function');
+
+    await presentation.loadPdfFromPath('invalid-file.txt');
+    expect(presentation.state.errorMessage).toContain('PDF');
+  });
+
   it('loads NotesWindow component without errors', async () => {
     const NotesWindow = await import('../components/NotesWindow.vue');
     expect(NotesWindow.default).toBeDefined();
