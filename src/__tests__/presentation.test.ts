@@ -200,18 +200,18 @@ describe('User Preferences & Stroke Width Settings', () => {
 });
 
 describe('Application Versioning System', () => {
-  it('reads canonical version 1.0.0 from package.json and formats display string', async () => {
+  it('reads canonical version from package.json and formats display string', async () => {
     const { APP_VERSION, formatAppVersion, getAppDisplayName, resolveAppVersion } = await import('../utils/version');
     const pkg = await import('../../package.json');
 
-    expect(APP_VERSION).toBe('1.0.0');
+    expect(APP_VERSION).toBe('1.0.1');
     expect(APP_VERSION).toBe(pkg.default.version);
-    expect(formatAppVersion()).toBe('v1.0.0');
-    expect(formatAppVersion('v1.0.0')).toBe('v1.0.0');
-    expect(getAppDisplayName()).toBe('PDF Presenter v1.0.0');
+    expect(formatAppVersion()).toBe(`v${pkg.default.version}`);
+    expect(formatAppVersion(`v${pkg.default.version}`)).toBe(`v${pkg.default.version}`);
+    expect(getAppDisplayName()).toBe(`PDF Presenter v${pkg.default.version}`);
 
     const resolved = await resolveAppVersion();
-    expect(resolved).toBe('1.0.0');
+    expect(resolved).toBe(pkg.default.version);
   });
 });
 
