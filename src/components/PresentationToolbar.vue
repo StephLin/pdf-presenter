@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { usePresentation } from '../composables/usePresentation';
 import type { PointerTool, LaserColor } from '../types/presentation';
 import {
@@ -30,6 +30,7 @@ const presentation = usePresentation();
 const { state, canUndo, canRedo } = presentation;
 
 const isVisible = ref(true);
+const isHoveringToolbar = ref(false);
 let hideTimer: any = null;
 const isColorMenuOpen = ref(false);
 const isPenMenuOpen = ref(false);
@@ -38,6 +39,10 @@ const jumpPageInput = ref(state.currentPage);
 
 const isPresentation = computed(() => state.mode === 'presentation');
 const isZoomed = computed(() => state.zoomScale > 1.02);
+
+// Proximity zone near the bottom of the screen to trigger toolbar visibility in presentation mode
+const BOTTOM_TRIGGER_HEIGHT = 96;
+const BOTTOM_TRIGGER_WIDTH = 640;
 
 const penColors = [
   '#ef4444', // Red
@@ -59,21 +64,79 @@ const highlighterColors = [
 const penWidthPresets = [2, 4, 8, 14];
 const highlighterWidthPresets = [12, 24, 36, 48];
 
-function resetHideTimer() {
-  isVisible.value = true;
+function isPointerNearBottomToolbar(clientX: number, clientY: number): boolean {
+  const viewportHeight = window.innerHeight;
+  const viewportWidth = window.innerWidth;
+  if (viewportHeight <= 0 || viewportWidth <= 0) return false;
+
+  const isNearBottom = clientY >= viewportHeight - BOTTOM_TRIGGER_HEIGHT;
+  const horizontalHalfSpan = Math.min(viewportWidth / 2, BOTTOM_TRIGGER_WIDTH / 2);
+  const centerX = viewportWidth / 2;
+  const isNearHorizontalCenter = Math.abs(clientX - centerX) <= horizontalHalfSpan;
+
+  return isNearBottom && isNearHorizontalCenter;
+}
+
+function scheduleHideTimer(delay = 800) {
   clearTimeout(hideTimer);
-  if (isPresentation.value) {
-    hideTimer = setTimeout(() => {
-      if (!isColorMenuOpen.value && !isPenMenuOpen.value && !isJumpInputOpen.value) {
-        isVisible.value = false;
-      }
-    }, 2800);
+  if (!isPresentation.value) return;
+
+  hideTimer = setTimeout(() => {
+    if (
+      !isHoveringToolbar.value &&
+      !isColorMenuOpen.value &&
+      !isPenMenuOpen.value &&
+      !isJumpInputOpen.value
+    ) {
+      isVisible.value = false;
+    }
+  }, delay);
+}
+
+function handleMouseMove(e: MouseEvent) {
+  if (!isPresentation.value) {
+    isVisible.value = true;
+    clearTimeout(hideTimer);
+    return;
+  }
+
+  if (isPointerNearBottomToolbar(e.clientX, e.clientY) || isHoveringToolbar.value) {
+    isVisible.value = true;
+    clearTimeout(hideTimer);
+  } else if (
+    isVisible.value &&
+    !isColorMenuOpen.value &&
+    !isPenMenuOpen.value &&
+    !isJumpInputOpen.value
+  ) {
+    scheduleHideTimer(400);
   }
 }
 
-function handleMouseMove() {
-  resetHideTimer();
+function handleToolbarMouseEnter() {
+  isHoveringToolbar.value = true;
+  isVisible.value = true;
+  clearTimeout(hideTimer);
 }
+
+function handleToolbarMouseLeave() {
+  isHoveringToolbar.value = false;
+  if (isPresentation.value) {
+    scheduleHideTimer(500);
+  }
+}
+
+watch(isPresentation, (inPresentation) => {
+  clearTimeout(hideTimer);
+  if (inPresentation) {
+    isVisible.value = false;
+    isColorMenuOpen.value = false;
+    isPenMenuOpen.value = false;
+    isJumpInputOpen.value = false;
+  } else {
+    isVisible.value = true;
+  }
+});
 
 function selectTool(tool: PointerTool) {
   presentation.setTool(tool);
@@ -128,7 +191,7 @@ function submitJumpPage() {
 
 onMounted(() => {
   window.addEventListener('mousemove', handleMouseMove, { passive: true });
-  resetHideTimer();
+  isVisible.value = !isPresentation.value;
 });
 
 onUnmounted(() => {
@@ -144,7 +207,8 @@ onUnmounted(() => {
       'toolbar-hidden': !isVisible && isPresentation,
       'is-presentation': isPresentation
     }"
-    @mouseenter="isVisible = true"
+    @mouseenter="handleToolbarMouseEnter"
+    @mouseleave="handleToolbarMouseLeave"
   >
     <div class="presenter-toolbar">
       <!-- 1. Slide Navigation Group -->
