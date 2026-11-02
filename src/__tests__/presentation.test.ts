@@ -205,3 +205,15 @@ describe('Application Versioning System', () => {
     expect(resolved).toBe('1.0.0');
   });
 });
+
+describe('Offline PDF Asset Configuration', () => {
+  it('configures bundled local paths for PDF.js CMap, standard fonts, WASM, and ICC assets', async () => {
+    const { OFFLINE_PDFJS_ASSETS } = await import('../services/pdfService');
+
+    expect(OFFLINE_PDFJS_ASSETS.cMapUrl).toBe('/pdfjs/cmaps/');
+    expect(OFFLINE_PDFJS_ASSETS.cMapPacked).toBe(true);
+    expect(OFFLINE_PDFJS_ASSETS.standardFontDataUrl).toBe('/pdfjs/standard_fonts/');
+    expect(OFFLINE_PDFJS_ASSETS.wasmUrl).toBe('/pdfjs/wasm/');
+    expect(OFFLINE_PDFJS_ASSETS.iccUrl).toBe('/pdfjs/iccs/');
+  });
+});
