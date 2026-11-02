@@ -13,6 +13,14 @@ export interface PageRenderResult {
   pageHeight: number;
 }
 
+export const OFFLINE_PDFJS_ASSETS = {
+  cMapUrl: '/pdfjs/cmaps/',
+  cMapPacked: true,
+  standardFontDataUrl: '/pdfjs/standard_fonts/',
+  wasmUrl: '/pdfjs/wasm/',
+  iccUrl: '/pdfjs/iccs/',
+} as const;
+
 class PdfService {
   private pdfDoc: pdfjsLib.PDFDocumentProxy | null = null;
   private loadingTask: pdfjsLib.PDFDocumentLoadingTask | null = null;
@@ -30,10 +38,18 @@ class PdfService {
       this.loadingTask = null;
     }
 
+    const baseUri =
+      typeof window !== 'undefined' && window.location?.origin
+        ? window.location.origin
+        : '';
+
     this.loadingTask = pdfjsLib.getDocument({
       data,
-      cMapUrl: undefined,
-      cMapPacked: true,
+      cMapUrl: `${baseUri}${OFFLINE_PDFJS_ASSETS.cMapUrl}`,
+      cMapPacked: OFFLINE_PDFJS_ASSETS.cMapPacked,
+      standardFontDataUrl: `${baseUri}${OFFLINE_PDFJS_ASSETS.standardFontDataUrl}`,
+      wasmUrl: `${baseUri}${OFFLINE_PDFJS_ASSETS.wasmUrl}`,
+      iccUrl: `${baseUri}${OFFLINE_PDFJS_ASSETS.iccUrl}`,
     });
 
     this.pdfDoc = await this.loadingTask.promise;
