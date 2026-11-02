@@ -20,15 +20,21 @@ jobs:
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
             arch_label: windows-x64
+            bundles: nsis
+          - platform: windows-latest
+            target: aarch64-pc-windows-msvc
+            arch_label: windows-arm64
+            bundles: nsis
           - platform: macos-latest
             target: aarch64-apple-darwin
             arch_label: macos-arm64
-          - platform: macos-latest
-            target: x86_64-apple-darwin
-            arch_label: macos-x64
           - platform: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             arch_label: linux-x64
+          - platform: ubuntu-22.04-arm
+            target: aarch64-unknown-linux-gnu
+            arch_label: linux-arm64
+            bundles: deb,rpm
 
     steps:
       - name: Checkout repository
@@ -90,7 +96,13 @@ jobs:
         env:
           CARGO_BUILD_TARGET: ${{ matrix.target }}
           APPIMAGE_EXTRACT_AND_RUN: 1
-        run: pnpm tauri build --target ${{ matrix.target }}
+        run: |
+          if [ -n "${{ matrix.bundles }}" ]; then
+            pnpm tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+          else
+            pnpm tauri build --target ${{ matrix.target }}
+          fi
+        shell: bash
 
       - name: Package macOS portable .app.zip
         if: runner.os == 'macOS'
