@@ -295,21 +295,36 @@ During your talk, use the mouse wheel to zoom in on formula details, and use sho
     syncToExternalNotesWindow();
   }
 
-  async function openPdfFileDialog() {
-    try {
-      const filePath = await invoke<string | null>('pick_pdf_file');
-      if (!filePath) return;
+  async function loadPdfFromPath(filePath: string) {
+    if (!filePath) return;
+    if (!filePath.toLowerCase().endsWith('.pdf')) {
+      state.errorMessage = 'Please select or drop a valid PDF document (.pdf).';
+      return;
+    }
 
+    try {
       state.isLoading = true;
+      state.errorMessage = '';
       const bytes = await invoke<number[]>('read_pdf_file', { path: filePath });
       const uint8 = new Uint8Array(bytes);
       const fileName = filePath.replace(/\\/g, '/').split('/').pop() || 'document.pdf';
       await loadPdfData(fileName, uint8, filePath);
     } catch (err: any) {
-      console.error('File dialog / read error:', err);
+      console.error('File read error:', err);
       state.errorMessage = `Failed to open file: ${err?.message || err}`;
     } finally {
       state.isLoading = false;
+    }
+  }
+
+  async function openPdfFileDialog() {
+    try {
+      const filePath = await invoke<string | null>('pick_pdf_file');
+      if (!filePath) return;
+      await loadPdfFromPath(filePath);
+    } catch (err: any) {
+      console.error('File dialog / read error:', err);
+      state.errorMessage = `Failed to open file: ${err?.message || err}`;
     }
   }
 
@@ -527,6 +542,7 @@ During your talk, use the mouse wheel to zoom in on formula details, and use sho
     initExternalNotesSync,
     syncToExternalNotesWindow,
     loadPdfData,
+    loadPdfFromPath,
     loadSamplePdf,
     openPdfFileDialog,
     nextPage,

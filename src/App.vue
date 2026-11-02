@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, onUnmounted } from 'vue';
 import { isTauri } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import NotesWindow from './components/NotesWindow.vue';
@@ -59,6 +59,7 @@ if (!isNotesPopout.value) {
 const isDragOver = ref(false);
 const fileInputRef = ref<HTMLInputElement | null>(null);
 const appVersion = ref(APP_VERSION);
+let unlistenDragDrop: (() => void) | null = null;
 
 onMounted(async () => {
   appVersion.value = await resolveAppVersion();
@@ -67,13 +68,60 @@ onMounted(async () => {
     document.title = displayTitle;
     if (isTauri()) {
       try {
-        await getCurrentWindow().setTitle(displayTitle);
+        const currentWin = getCurrentWindow();
+        await currentWin.setTitle(displayTitle);
+        unlistenDragDrop = await currentWin.onDragDropEvent(async (event) => {
+          const payload = event.payload;
+          if (payload.type === 'enter' || payload.type === 'over') {
+            isDragOver.value = true;
+          } else if (payload.type === 'leave') {
+            isDragOver.value = false;
+          } else if (payload.type === 'drop') {
+            isDragOver.value = false;
+            const paths = payload.paths || [];
+            const pdfPath = paths.find((p) => p.toLowerCase().endsWith('.pdf'));
+            if (pdfPath) {
+              await presentation.loadPdfFromPath(pdfPath);
+            } else if (paths.length > 0) {
+              alert('Please drop a PDF document!');
+            }
+          }
+        });
       } catch {
-        // Ignore window title update errors in non-main contexts
+        // Ignore window title / drag-drop listener errors in non-main contexts
       }
     }
   }
 });
+
+onUnmounted(() => {
+  if (unlistenDragDrop) {
+    unlistenDragDrop();
+    unlistenDragDrop = null;
+  }
+});
+
+function handleDragEnter(e: DragEvent) {
+  if (e.dataTransfer?.types?.includes('Files')) {
+    isDragOver.value = true;
+  }
+}
+
+function handleDragOver(e: DragEvent) {
+  if (e.dataTransfer) {
+    e.dataTransfer.dropEffect = 'copy';
+  }
+  isDragOver.value = true;
+}
+
+function handleDragLeave(e: DragEvent) {
+  const currentTarget = e.currentTarget as HTMLElement | null;
+  const relatedTarget = e.relatedTarget as Node | null;
+  if (currentTarget && relatedTarget && currentTarget.contains(relatedTarget)) {
+    return;
+  }
+  isDragOver.value = false;
+}
 
 function handleFileSelect(e: Event) {
   const target = e.target as HTMLInputElement;
@@ -123,8 +171,9 @@ function handleDrop(e: DragEvent) {
       'laser-active': state.activeTool === 'laser',
       'drag-over': isDragOver
     }"
-    @dragover.prevent="isDragOver = true"
-    @dragleave.prevent="isDragOver = false"
+    @dragenter.prevent="handleDragEnter"
+    @dragover.prevent="handleDragOver"
+    @dragleave.prevent="handleDragLeave"
     @drop.prevent="handleDrop"
   >
     <!-- Hidden file input for web fallback -->
